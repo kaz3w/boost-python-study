@@ -38,18 +38,20 @@
 #include <thread>
 #include <opencv2/highgui/highgui_c.h>
 #include "libuvc/libuvc.h"
-#include "uvc_inject.h"
+#include "mylib_sample.h"
 
 namespace p = boost::python;
 namespace np = boost::python::numpy;
 
-
-void cb(uvc_frame_t *frame, void *ptr) {
+void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
   uvc_frame_t *bgr;
   uvc_error_t ret;
   IplImage* cvImg;
 
-  printf("callback! length = %u, ptr = %p\n", frame->data_bytes, ptr);
+  myUvcInject* pThis = (myUvcInject*)ptr;
+
+//  printf("callback! length = %u, ptr = %p\n", frame->data_bytes, ptr);
+  pThis->exec_notify_callback();
 
   bgr = uvc_allocate_frame(frame->width * frame->height * 3);
   if (!bgr) {
@@ -80,7 +82,7 @@ void cb(uvc_frame_t *frame, void *ptr) {
   uvc_free_frame(bgr);
 }
 
-int exec_main(int argc, char **argv) 
+int myUvcInject::run(void) 
 {
   uvc_context_t *ctx;
   uvc_error_t res;
@@ -113,7 +115,7 @@ int exec_main(int argc, char **argv)
     } else {
       puts("Device opened");
 
-      uvc_print_diag(devh, stderr);
+      // uvc_print_diag(devh, stderr);
 
       res = uvc_get_stream_ctrl_format_size(
           devh, &ctrl, UVC_FRAME_FORMAT_YUYV, 640, 480, 30
@@ -124,8 +126,7 @@ int exec_main(int argc, char **argv)
       if (res < 0) {
         uvc_perror(res, "get_mode");
       } else {
-        res = uvc_start_streaming(devh, &ctrl, cb, (int *)12345, 0);
-
+        res = uvc_start_streaming(devh, &ctrl, myUvcInject::cb, this, 0);
         if (res < 0) {
           uvc_perror(res, "start_streaming");
         } else {
@@ -169,7 +170,7 @@ int exec_main(int argc, char **argv)
 /////////////////////////////////////////////////////
 // like calloc (malloc + fill zero)
 
-np::ndarray myBuffer_UvcInjectSample::zero_init(uint32_t array_size) {
+np::ndarray myUvcInject::zero_init(uint32_t array_size) {
 	p::tuple shape = p::make_tuple(array_size);
 	np::dtype dtype = np::dtype::get_builtin<double>();
 	np::ndarray array = np::zeros(shape, dtype);
@@ -178,55 +179,62 @@ np::ndarray myBuffer_UvcInjectSample::zero_init(uint32_t array_size) {
 
 /////////////////////////////////////////////////////
 // Run buffer
-void myBuffer_UvcInjectSample::execute(uint32_t count, p::object python_notify_cb, p::object user_data ) 
+void myUvcInject::execute( p::object python_notify_cb, p::object user_data ) 
 {
 	exec_pre_callback();
-	for (int ii=0; ii<count; ii++) {
-		python_notify_cb(user_data);
-	}
+
+	_pfnPyCallbackNotify = python_notify_cb;
+	_PyUserdataNotify = user_data;
+
+  run();
+
 	exec_post_callback();
 }
 
 /////////////////////////////////////////////////////
 // Register PRE Callback
-void myBuffer_UvcInjectSample::set_pre_callback(p::object python_cb_func, p::object user_data ) {
+void myUvcInject::set_pre_callback(p::object python_cb_func, p::object user_data ) {
 	this->_pfnPyCallbackPre = python_cb_func;
 	this->_PyUserdataPre = user_data;
 }
 
 /////////////////////////////////////////////////////
 
-void myBuffer_UvcInjectSample::exec_pre_callback() {
+void myUvcInject::exec_pre_callback() {
 	this->_pfnPyCallbackPre(this->_PyUserdataPre);
 }
 
 /////////////////////////////////////////////////////
 // Register POST Callback
-void  myBuffer_UvcInjectSample::set_post_callback(p::object python_cb_func, p::object user_data ) {
+void  myUvcInject::set_post_callback(p::object python_cb_func, p::object user_data ) {
 	this->_pfnPyCallbackPost = python_cb_func;
 	this->_PyUserdataPost = user_data;
 }
 
 /////////////////////////////////////////////////////
 
-void  myBuffer_UvcInjectSample::exec_post_callback() {
+void  myUvcInject::exec_post_callback() {
 	this->_pfnPyCallbackPost( this->_PyUserdataPost);
 }
 
+/////////////////////////////////////////////////////
 
+void myUvcInject::exec_notify_callback() {
+	this->_pfnPyCallbackNotify(this->_PyUserdataNotify);
+}
 
 /////////////////////////////////////////////////////
 
-BOOST_PYTHON_MODULE(mylib)
+BOOST_PYTHON_MODULE(mylib_sample)
  {
 	using namespace boost::python;
 
-	class_<myBuffer_UvcInjectSample>("myBuffer_UvcInjectSample")
-		.def("zero_init", &myBuffer_UvcInjectSample::zero_init)
-		.def("execute", &myBuffer_UvcInjectSample::execute)
-		.def("set_pre_callback", &myBuffer_UvcInjectSample::set_pre_callback)
-		.def("set_post_callback", &myBuffer_UvcInjectSample::set_post_callback)
-		.def_readwrite("_pfnPyCallbackPre", &myBuffer_UvcInjectSample::_pfnPyCallbackPre)
-		.def_readwrite("_pfnPyCallbackPost", &myBuffer_UvcInjectSample::_pfnPyCallbackPost)
+	class_<myUvcInject>("myUvcInject")
+		.def("zero_init", &myUvcInject::zero_init)
+		.def("execute", &myUvcInject::execute)
+		.def("set_pre_callback", &myUvcInject::set_pre_callback)
+		.def("set_post_callback", &myUvcInject::set_post_callback)
+		.def_readwrite("_pfnPyCallbackPre", &myUvcInject::_pfnPyCallbackPre)
+		.def_readwrite("_pfnPyCallbackPost", &myUvcInject::_pfnPyCallbackPost)
 	;
 }

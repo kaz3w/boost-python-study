@@ -18,7 +18,7 @@ TARGET_SAMPLE=mylib_sample.so
 all: clean $(TARGET) $(TARGET_SAMPLE)
 
 
-$(TARGET): mylib.cpp
+$(TARGET): mylib.cpp Makefile
 	g++ -DPIC -shared -fPIC $(INCLUDES) mylib.cpp -o $(TARGET) $(LIBS)
 
 
@@ -30,8 +30,8 @@ TARGET_SAMPLE_LIBS = \
 	-lopencv_core
 
 
-$(TARGET_SAMPLE): uvc_inject.o
-	g++ -DPIC -shared -fPIC $(INCLUDES) uvc_inject.cpp -o $(TARGET_SAMPLE) $(TARGET_SAMPLE_LIBS)
+$(TARGET_SAMPLE): mylib_sample.cpp Makefile
+	g++ -DPIC -shared -fPIC $(INCLUDES) mylib_sample.cpp -o $(TARGET_SAMPLE) $(TARGET_SAMPLE_LIBS)
 
 
 test:
