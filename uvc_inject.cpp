@@ -31,12 +31,18 @@
 *  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 *  POSSIBILITY OF SUCH DAMAGE.
 *********************************************************************/
+#include <boost/python.hpp>
+#include <boost/python/numpy.hpp>
 #include <stdio.h>
 #include <chrono>
 #include <thread>
 #include <opencv2/highgui/highgui_c.h>
-
 #include "libuvc/libuvc.h"
+#include "uvc_inject.h"
+
+namespace p = boost::python;
+namespace np = boost::python::numpy;
+
 
 void cb(uvc_frame_t *frame, void *ptr) {
   uvc_frame_t *bgr;
@@ -74,7 +80,8 @@ void cb(uvc_frame_t *frame, void *ptr) {
   uvc_free_frame(bgr);
 }
 
-int main(int argc, char **argv) {
+int exec_main(int argc, char **argv) 
+{
   uvc_context_t *ctx;
   uvc_error_t res;
   uvc_device_t *dev;
@@ -155,3 +162,71 @@ int main(int argc, char **argv) {
   return 0;
 }
 
+
+
+
+
+/////////////////////////////////////////////////////
+// like calloc (malloc + fill zero)
+
+np::ndarray myBuffer_UvcInjectSample::zero_init(uint32_t array_size) {
+	p::tuple shape = p::make_tuple(array_size);
+	np::dtype dtype = np::dtype::get_builtin<double>();
+	np::ndarray array = np::zeros(shape, dtype);
+	return array;
+}
+
+/////////////////////////////////////////////////////
+// Run buffer
+void myBuffer_UvcInjectSample::execute(uint32_t count, p::object python_notify_cb, p::object user_data ) 
+{
+	exec_pre_callback();
+	for (int ii=0; ii<count; ii++) {
+		python_notify_cb(user_data);
+	}
+	exec_post_callback();
+}
+
+/////////////////////////////////////////////////////
+// Register PRE Callback
+void myBuffer_UvcInjectSample::set_pre_callback(p::object python_cb_func, p::object user_data ) {
+	this->_pfnPyCallbackPre = python_cb_func;
+	this->_PyUserdataPre = user_data;
+}
+
+/////////////////////////////////////////////////////
+
+void myBuffer_UvcInjectSample::exec_pre_callback() {
+	this->_pfnPyCallbackPre(this->_PyUserdataPre);
+}
+
+/////////////////////////////////////////////////////
+// Register POST Callback
+void  myBuffer_UvcInjectSample::set_post_callback(p::object python_cb_func, p::object user_data ) {
+	this->_pfnPyCallbackPost = python_cb_func;
+	this->_PyUserdataPost = user_data;
+}
+
+/////////////////////////////////////////////////////
+
+void  myBuffer_UvcInjectSample::exec_post_callback() {
+	this->_pfnPyCallbackPost( this->_PyUserdataPost);
+}
+
+
+
+/////////////////////////////////////////////////////
+
+BOOST_PYTHON_MODULE(mylib)
+ {
+	using namespace boost::python;
+
+	class_<myBuffer_UvcInjectSample>("myBuffer_UvcInjectSample")
+		.def("zero_init", &myBuffer_UvcInjectSample::zero_init)
+		.def("execute", &myBuffer_UvcInjectSample::execute)
+		.def("set_pre_callback", &myBuffer_UvcInjectSample::set_pre_callback)
+		.def("set_post_callback", &myBuffer_UvcInjectSample::set_post_callback)
+		.def_readwrite("_pfnPyCallbackPre", &myBuffer_UvcInjectSample::_pfnPyCallbackPre)
+		.def_readwrite("_pfnPyCallbackPost", &myBuffer_UvcInjectSample::_pfnPyCallbackPost)
+	;
+}
