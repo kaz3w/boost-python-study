@@ -36,6 +36,8 @@
 #include <stdio.h>
 #include <chrono>
 #include <thread>
+#include <algorithm>
+#include <stdexcept>
 #include <opencv2/highgui/highgui_c.h>
 #include "libuvc/libuvc.h"
 #include "mylib_sample.h"
@@ -43,17 +45,31 @@
 namespace p = boost::python;
 namespace np = boost::python::numpy;
 
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
+myUvcInject::myUvcInject() {
+  _keeptime = 10;
+}
+
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
 void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
+  myUvcInject* pThis = (myUvcInject*)ptr;
+
   uvc_frame_t *bgr;
   uvc_error_t ret;
   IplImage* cvImg;
+  const bool flag_cv = true;
 
-  myUvcInject* pThis = (myUvcInject*)ptr;
 
-//  printf("callback! length = %u, ptr = %p\n", frame->data_bytes, ptr);
-  pThis->exec_notify_callback();
-
-  bgr = uvc_allocate_frame(frame->width * frame->height * 3);
+  size_t bgr_buf_len = frame->width * frame->height * 3;
+  bgr = uvc_allocate_frame(bgr_buf_len);
   if (!bgr) {
     printf("unable to allocate bgr frame!");
     return;
@@ -66,23 +82,41 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
     return;
   }
 
-  cvImg = cvCreateImageHeader(
-      cvSize(bgr->width, bgr->height),
-      IPL_DEPTH_8U,
-      3);
+	p::tuple shape = p::make_tuple(bgr_buf_len);
+	np::dtype dtype = np::dtype::get_builtin<uint8_t>();
+	np::ndarray array = np::zeros(shape, dtype);
+  size_t N = array.shape(0);
 
-  cvSetData(cvImg, bgr->data, bgr->width * 3); 
+  auto* p = reinterpret_cast<char *>(array.get_data());
+  for(int ii=0; ii<N; ii++) {
+    *(p+ii) = *((char *)(bgr->data+ii));
 
-  cvNamedWindow("Test", CV_WINDOW_AUTOSIZE);
-  cvShowImage("Test", cvImg);
-  cvWaitKey(10);
+  }
 
-  cvReleaseImageHeader(&cvImg);
+  pThis->exec_notify_callback(array);
 
+  if (flag_cv) {
+    cvImg = cvCreateImageHeader(
+        cvSize(bgr->width, bgr->height),
+        IPL_DEPTH_8U,
+        3);
+
+    cvSetData(cvImg, bgr->data, bgr->width * 3); 
+
+    // cvNamedWindow("SRC", CV_WINDOW_AUTOSIZE);
+    cvShowImage("Src: C++", cvImg);
+    cvWaitKey(10);
+
+    cvReleaseImageHeader(&cvImg);
+  }
   uvc_free_frame(bgr);
 }
+/*********************************************************************
+* 
+*
+*********************************************************************/
 
-int myUvcInject::run(void) 
+int myUvcInject::run(void ) 
 {
   uvc_context_t *ctx;
   uvc_error_t res;
@@ -139,14 +173,11 @@ int myUvcInject::run(void)
             /* uvc_perror(resPT, "set_pt_abs"); */
             uvc_error_t resEXP = uvc_set_exposure_abs(devh, 20 + i * 5);
             uvc_perror(resEXP, "set_exp_abs");
-            
-            //sleep(1);
-	    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      	    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
           }
-          //sleep(10);
-	  std::this_thread::sleep_for(std::chrono::milliseconds(10 * 1000));
+      	  std::this_thread::sleep_for(std::chrono::milliseconds(_keeptime * 1000));
           uvc_stop_streaming(devh);
-	  puts("Done streaming.");
+	        puts("Done streaming.");
         }
       }
 
@@ -164,11 +195,10 @@ int myUvcInject::run(void)
 }
 
 
-
-
-
-/////////////////////////////////////////////////////
-// like calloc (malloc + fill zero)
+/*********************************************************************
+* 
+*
+*********************************************************************/
 
 np::ndarray myUvcInject::zero_init(uint32_t array_size) {
 	p::tuple shape = p::make_tuple(array_size);
@@ -177,64 +207,86 @@ np::ndarray myUvcInject::zero_init(uint32_t array_size) {
 	return array;
 }
 
-/////////////////////////////////////////////////////
-// Run buffer
-void myUvcInject::execute( p::object python_notify_cb, p::object user_data ) 
+
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
+void myUvcInject::execute( p::object python_notify_cb, boost::python::numpy::ndarray rgb, int duration_sec ) 
 {
 	exec_pre_callback();
 
 	_pfnPyCallbackNotify = python_notify_cb;
-	_PyUserdataNotify = user_data;
+  _keeptime = duration_sec;
 
   run();
 
 	exec_post_callback();
 }
 
-/////////////////////////////////////////////////////
-// Register PRE Callback
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
 void myUvcInject::set_pre_callback(p::object python_cb_func, p::object user_data ) {
 	this->_pfnPyCallbackPre = python_cb_func;
 	this->_PyUserdataPre = user_data;
 }
 
-/////////////////////////////////////////////////////
-
+/*********************************************************************
+* 
+*
+*********************************************************************/
 void myUvcInject::exec_pre_callback() {
 	this->_pfnPyCallbackPre(this->_PyUserdataPre);
 }
 
-/////////////////////////////////////////////////////
-// Register POST Callback
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
 void  myUvcInject::set_post_callback(p::object python_cb_func, p::object user_data ) {
 	this->_pfnPyCallbackPost = python_cb_func;
 	this->_PyUserdataPost = user_data;
 }
 
-/////////////////////////////////////////////////////
+/*********************************************************************
+* 
+*
+*********************************************************************/
 
 void  myUvcInject::exec_post_callback() {
 	this->_pfnPyCallbackPost( this->_PyUserdataPost);
 }
 
-/////////////////////////////////////////////////////
+/*********************************************************************
+* 
+*
+*********************************************************************/
 
-void myUvcInject::exec_notify_callback() {
-	this->_pfnPyCallbackNotify(this->_PyUserdataNotify);
+void myUvcInject::exec_notify_callback(boost::python::numpy::ndarray buffer) {
+	this->_pfnPyCallbackNotify(buffer);
 }
+
+
+/////////////////////////////////////////////////////
 
 /////////////////////////////////////////////////////
 
 BOOST_PYTHON_MODULE(mylib_sample)
- {
+{
 	using namespace boost::python;
+	// using namespace boost::python::numpy;
+
+  boost::python::numpy::initialize();
 
 	class_<myUvcInject>("myUvcInject")
 		.def("zero_init", &myUvcInject::zero_init)
 		.def("execute", &myUvcInject::execute)
 		.def("set_pre_callback", &myUvcInject::set_pre_callback)
 		.def("set_post_callback", &myUvcInject::set_post_callback)
-		.def_readwrite("_pfnPyCallbackPre", &myUvcInject::_pfnPyCallbackPre)
-		.def_readwrite("_pfnPyCallbackPost", &myUvcInject::_pfnPyCallbackPost)
 	;
 }

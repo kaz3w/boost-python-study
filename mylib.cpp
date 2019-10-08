@@ -6,8 +6,10 @@
 namespace p = boost::python;
 namespace np = boost::python::numpy;
 
-/////////////////////////////////////////////////////
-// like calloc (malloc + fill zero)
+/*********************************************************************
+* 
+*
+*********************************************************************/
 
 np::ndarray myBuffer::zero_init(uint32_t array_size) {
 	p::tuple shape = p::make_tuple(array_size);
@@ -16,8 +18,11 @@ np::ndarray myBuffer::zero_init(uint32_t array_size) {
 	return array;
 }
 
-/////////////////////////////////////////////////////
-// Run buffer
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
 void myBuffer::execute(uint32_t count, p::object python_notify_cb, p::object user_data ) 
 {
 	exec_pre_callback();
@@ -27,35 +32,47 @@ void myBuffer::execute(uint32_t count, p::object python_notify_cb, p::object use
 	exec_post_callback();
 }
 
-/////////////////////////////////////////////////////
-// Register PRE Callback
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
 void myBuffer::set_pre_callback(p::object python_cb_func, p::object user_data ) {
 	this->_pfnPyCallbackPre = python_cb_func;
 	this->_PyUserdataPre = user_data;
 }
 
-/////////////////////////////////////////////////////
-
+/*********************************************************************
+* 
+*
+*********************************************************************/
 void myBuffer::exec_pre_callback() {
 	this->_pfnPyCallbackPre(this->_PyUserdataPre);
 }
 
-/////////////////////////////////////////////////////
-// Register POST Callback
+/*********************************************************************
+* 
+*
+*********************************************************************/
+
 void  myBuffer::set_post_callback(p::object python_cb_func, p::object user_data ) {
 	this->_pfnPyCallbackPost = python_cb_func;
 	this->_PyUserdataPost = user_data;
 }
 
-/////////////////////////////////////////////////////
+/*********************************************************************
+* 
+*
+*********************************************************************/
 
 void  myBuffer::exec_post_callback() {
 	this->_pfnPyCallbackPost( this->_PyUserdataPost);
 }
 
-/////////////////////////////////////////////////////
-// just simple test
-
+/*********************************************************************
+* 
+*
+*********************************************************************/
 void myBuffer::sum(int a, int b) {
 	_sum = a + b;
 }
@@ -65,6 +82,9 @@ void myBuffer::sum(int a, int b) {
 BOOST_PYTHON_MODULE(mylib)
  {
 	using namespace boost::python;
+	using namespace boost::python::numpy;
+
+	boost::python::numpy::initialize();
 
 	class_<myBuffer>("myBuffer")
 		.def("zero_init", &myBuffer::zero_init)
