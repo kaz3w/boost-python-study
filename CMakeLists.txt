@@ -11,12 +11,22 @@ if (NOT CMAKE_BUILD_TARGET)
   set(CMAKE_BUILD_TARGET "Both" CACHE STRING "" FORCE)
 endif()
 
+add_custom_target(core)
+
 # The version number
 set(mylib_VERSION_MAJOR 0)
 set(mylib_VERSION_MINOR 1)
 set(mylib_VERSION_PATCH 0)
 set(mylib_DESCRIPTION "A bridge between C++ and Python/Numpy")
 set(mylib_URL "https://github.com/kaz3w/boost-python-study/")
+
+
+# The version number
+set(mylib_sample_VERSION_MAJOR 0)
+set(mylib_sample_VERSION_MINOR 1)
+set(mylib_sample_VERSION_PATCH 0)
+set(mylib_sample_DESCRIPTION "A bridge between C++ and Python/Numpy")
+set(mylib_sample_URL "https://github.com/kaz3w/boost-python-study/")
 
 # Boost
 set(BOOST_ROOT /usr)
@@ -32,6 +42,7 @@ pkg_check_modules(PYTHON2 python2 REQUIRED)
 include_directories(${PYTHON2_INCLUDE_DIRS})
 
 add_library(mylib SHARED mylib.cpp)
+set_target_properties(mylib PROPERTIES PREFIX "")
 set_target_properties(mylib PROPERTIES SUFFIX ".so")
 target_link_libraries(mylib boost_numpy boost_python)
 
@@ -47,8 +58,8 @@ else()
   endif()
 endif()
 
-add_executable (example uvc_inject.cpp)
-
-# add the executable
-target_link_libraries(example uvc ${OPENCV_LDFLAGS})
+add_library(mylib_sample SHARED mylib_sample.cpp)
+set_target_properties(mylib_sample PROPERTIES PREFIX "")
+set_target_properties(mylib_sample PROPERTIES SUFFIX ".so")
+target_link_libraries(mylib_sample boost_numpy boost_python uvc ${OPENCV_LDFLAGS})
 
