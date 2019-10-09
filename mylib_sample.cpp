@@ -70,7 +70,7 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
   uvc_frame_t *bgr;
   uvc_error_t ret;
   IplImage* cvImg;
-  const bool flag_cv = true;
+  const bool flag_cv = false;
 
 
   size_t bgr_buf_len = frame->width * frame->height * 3;
