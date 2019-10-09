@@ -4,6 +4,8 @@
 *  Copyright (C) 2010-2012 Ken Tossell
 *  All rights reserved.
 *
+*  Portions of Copyright (C) 2019 Katsumi.W
+*
 *  Redistribution and use in source and binary forms, with or without
 *  modification, are permitted provided that the following conditions
 *  are met:
@@ -51,7 +53,10 @@ namespace np = boost::python::numpy;
 *********************************************************************/
 
 myUvcInject::myUvcInject() {
-  _keeptime = 10;
+	_keeptime = 10;
+	_width = 640;
+	_height = 480;
+	_fps = 30;
 }
 
 /*********************************************************************
@@ -92,7 +97,7 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
     *(p+ii) = *((reinterpret_cast<char *>(bgr->data)+ii));
 
   }
-
+	// Callback python function (Notify Callback)
   pThis->exec_notify_callback(array);
 
   if (flag_cv) {
@@ -102,7 +107,6 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
         3);
 
     cvSetData(cvImg, bgr->data, bgr->width * 3); 
-
     // cvNamedWindow("SRC", CV_WINDOW_AUTOSIZE);
     cvShowImage("Src: C++", cvImg);
     cvWaitKey(10);
@@ -148,11 +152,11 @@ int myUvcInject::run(void )
       uvc_perror(res, "uvc_open");
     } else {
       puts("Device opened");
+	  printf("%d x %d x %d\n", _width, _height, _fps );
 
-      // uvc_print_diag(devh, stderr);
-
+      uvc_print_diag(devh, stderr);
       res = uvc_get_stream_ctrl_format_size(
-          devh, &ctrl, UVC_FRAME_FORMAT_YUYV, 640, 480, 30
+          devh, &ctrl, UVC_FRAME_FORMAT_YUYV, _width, _height, _fps
       );
 
       uvc_print_stream_ctrl(&ctrl, stderr);
@@ -164,11 +168,15 @@ int myUvcInject::run(void )
         if (res < 0) {
           uvc_perror(res, "start_streaming");
         } else {
-          puts("Streaming for 10 seconds...");
+
+
+
+
+          printf("Streaming for %d seconds...\n", _keeptime );
           uvc_error_t resAEMODE = uvc_set_ae_mode(devh, 1);
           uvc_perror(resAEMODE, "set_ae_mode");
           int i;
-          for (i = 1; i <= 10; i++) {
+          for (i = 1; i <= 5; i++) {
             /* uvc_error_t resPT = uvc_set_pantilt_abs(devh, i * 20 * 3600, 0); */
             /* uvc_perror(resPT, "set_pt_abs"); */
             uvc_error_t resEXP = uvc_set_exposure_abs(devh, 20 + i * 5);
@@ -180,14 +188,11 @@ int myUvcInject::run(void )
 	        puts("Done streaming.");
         }
       }
-
       uvc_close(devh);
       puts("Device closed");
     }
-
     uvc_unref_device(dev);
   }
-
   uvc_exit(ctx);
   puts("UVC exited");
 
@@ -213,14 +218,19 @@ np::ndarray myUvcInject::zero_init(uint32_t array_size) {
 *
 *********************************************************************/
 
-void myUvcInject::execute( p::object python_notify_cb, boost::python::numpy::ndarray rgb, int duration_sec ) 
+void myUvcInject::execute( p::object python_notify_cb, boost::python::numpy::ndarray rgb, 
+							int duration_sec, int width, int height, int fps ) 
 {
 	exec_pre_callback();
 
 	_pfnPyCallbackNotify = python_notify_cb;
-  _keeptime = duration_sec;
 
-  run();
+	_keeptime = duration_sec;
+	_width = width;
+	_height = height;
+	_fps = fps;
+
+	run();
 
 	exec_post_callback();
 }
