@@ -89,7 +89,7 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
 
   auto* p = reinterpret_cast<char *>(array.get_data());
   for(int ii=0; ii<N; ii++) {
-    *(p+ii) = *((char *)(bgr->data+ii));
+    *(p+ii) = *((reinterpret_cast<char *>(bgr->data)+ii));
 
   }
 
