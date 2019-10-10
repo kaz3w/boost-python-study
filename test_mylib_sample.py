@@ -1,46 +1,18 @@
 #!/usr/bin/python
-import mylib_sample
+from multiprocessing import Process, Value, Array, Queue
 import numpy as np
 import cv2
 from PIL import Image
 import matplotlib.pyplot as plt
-import threading
-import Queue
 import time
-import concurrent.futures
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import mylib_sample
 
-#####################################################################
-
-import multiprocessing.managers as m
-
-class myProxyManager(m.BaseManager):
-	pass
-
-
-class mySharedClass:
-	def __init__(self):
-		self.shared = dict()
-
-	def set(self, **kwargs):
-		for key,value in kwargs.items():
-			self.shared[key] = value
-	
-	def get(self, *args):
-		return {key: self.shared[key] for key in args} if args else self.shared
-
-myProxyManager.register("mySharedClass", mySharedClass )
-
-
-# myProxyManager.start()
-# myProxyManager.mySharedClass.set( "write_index",  0 )
-# myProxyManager.mySharedClass.set( "read_index", 0 )
 
 
 #####################################################################
 
-g_width = 640
-g_height = 480
+g_width = 320
+g_height = 240
 g_fps = 30
 
 #####################################################################
@@ -48,17 +20,19 @@ g_fps = 30
 rgb_array = np.zeros(g_width * g_height * 3, dtype=np.int8)
 rgb_array = rgb_array.reshape( g_height, g_width, 3 )
 
-end_flag = False
+q = Queue(0)
 
-# q = Queue.Queue(0)
+global read_index
+read_index = Value('i', 0 )
 
-write_index = 0
-read_index = 0
+global write_index
+write_index = Value('i', 0 )
 
+global end_flag
+end_flag = Value('i', 0 )
 
 buf_size = 10
 
-# lock = threading.Lock()
 
 #####################################################################
 
@@ -71,108 +45,86 @@ def my_uvc_test_post_cb_func(rBuffer):
 	global end_flag
 
 	print("[Python] UVC POST (state:post-process)")
-	end_flag = True
-	# while True:
-	# 	try:
-	# 		q.task_done()
-	# 	except ValueError as e:
-	# 		return
+	end_flag.value = 1
 
 #####################################################################
 
 def my_uvc_test_notify_cb_func(data):
 	global write_index
-
 	data = data.reshape( g_height, g_width ,3 )
-	print("Write {}({})").format( write_index % buf_size, write_index )
-	write_index = write_index + 1
-	# q.put(data)
+	# print("RECEIVE {}({})").format( write_index.value % buf_size, write_index.value )
+	write_index.value += 1
+	q.put(data)
 
 #####################################################################
 
-def myShowImageThread(read_index, write_index):
-	# global read_index
-	# global write_index
-	global end_flag
+def f(t):
+    s1 = np.cos(2*np.pi*t)
+    e1 = np.exp(-t)
+    return s1 * e1
 
-	print("Read {} ({})").format(  read_index % buf_size, read_index )
+t1 = np.arange(0.0, 5.0, 0.1)
+t2 = np.arange(0.0, 5.0, 0.02)
+t3 = np.arange(0.0, 2.0, 0.01)
 
-	while not end_flag:
-		if read_index <= write_index:
-			print("Read {}({}) late:{}").format(  read_index % buf_size, read_index, write_index-read_index )
-			read_index = read_index + 1
-		else:
-			print("Skip: R:{} W:{} late:{}").format(  read_index, write_index, write_index-read_index )
-		
-		time.sleep(0.01)
+def myShowImageProc(r, w, end_flag):
+	last_show_index = 0
+	# plt.figure(num = 'Dst: python')
 
-	# 	# if read_index <= write_index:
-	# 	# 	print("Read {}({}) late:{}").format(  read_index % buf_size, read_index, write_index-read_index )
-	# 	# 	read_index = read_index + 1
-	# 	# else:
-	# 	# 	print("XX")
+	fig, axarr = plt.subplots(2, 2, constrained_layout=True)
 
-	# print("====================")
+	axarr[0,0].set_xlabel('width (pix.)')
+	axarr[0,0].set_ylabel('height (pix.)')
 
-	return "Complete Show"
+	axarr[0,1].plot(t1, f(t1), 'o', t2, f(t2), '-')
+	axarr[0,1].set_title('subplot 1')
+	axarr[0,1].set_xlabel('distance (m)')
+	axarr[0,1].set_ylabel('Damped oscillation')
+	fig.suptitle('Preview = received ndarray(from C++ callback)', fontsize=16)
 
+	while not end_flag.value == 1:
+		if r.value <= w.value :
+			latency = w.value - r.value 
+			print("R:{} W:{} Delay:{}").format( r.value, w.value, latency )
+			r.value += 1
 
-		# img = q.get().reshape(g_height,g_width,3)
-# 		print("[Python] after GET (state:run)")
+			if latency > 2:
+				print("trim --->")
+				for ii in range(latency-1):
+					print(ii)
+					q.get()
+				print("---> trim")
 
-# 		if img.ndim == 3:
-# 			rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-# 			plt.imshow(rgb)
-# 
-# 		elif img.ndim == 2:
-# 			plt.imshow(img, cmap=plt.cm.gray)
-# 
-# 		try:
-# 			q.task_done()
-# 		except ValueError as e:
-# 			return
-	
-		# pythonplt.xticks([]), plt.yticks([])  # to hide tick values on X and Y axis
-# 		plt.pause(.01)
-# 		plt.show()
+			img = q.get().reshape(g_height,g_width,3)
+			if img.ndim == 3:
+				rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+				axarr[0,0].imshow(rgb)
+				plt.pause(0.01)
+				last_show_index = w.value
+			elif img.ndim == 2:
+				axarr[0,0].imshow(img, cmap=plt.cm.gray)
+				plt.pause(0.01)
+				last_show_index = w.value
+
 
 #####################################################################
 
-def myInjectThread(inject_time, w, h, fps):
+def myInjectProc(inject_time, w, h, fps):
 	global rgb_array
 	inject = mylib_sample.myUvcInject()
 	inject.set_pre_callback( my_uvc_test_pre_cb_func, inject  )
 	inject.set_post_callback( my_uvc_test_post_cb_func, inject  )
 	inject.execute( my_uvc_test_notify_cb_func, rgb_array, inject_time, w, h, fps )
-	return "Complete Injection"
 
 #####################################################################
 
-def main():
-	    with concurrent.futures.ProcessPoolExecutor() as executor:
-			all_process = []
-
-			global end_flag
-			global shared
-			global read_index
-			global write_index
-
-			end_flag = False
-
-			keep_time = 20
-			job = executor.submit(myInjectThread, keep_time, g_width, g_height, g_fps )
-			all_process.append(job)
-
-			show = executor.submit(myShowImageThread, read_index, write_index )
-			all_process.append(show)
-
-			for job in as_completed( all_process ):
-				print( job.result())
-
-			# inject_thread = threading.Thread( target=myInjectThread, 
-			# 									args=(keep_time, g_width, g_height, g_fps))
-			# inject_thread.start()
-
-
 if __name__ == "__main__":
-	main()
+
+	keep_time = 300
+	p = Process( target=myInjectProc, args=(keep_time, g_width, g_height, g_fps) )
+	p.start()
+
+	s = Process( target = myShowImageProc, args=(read_index, write_index, end_flag) )
+	s.start()
+	p.join()
+	s.join()
