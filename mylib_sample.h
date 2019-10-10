@@ -19,8 +19,9 @@ public:
 	boost::python::numpy::ndarray zero_init(uint32_t array_size);
 
 	// Run buffer
-	void execute(boost::python::object python_notify_cb, boost::python::numpy::ndarray rgb,
+	void execute(boost::python::object python_notify_cb,
 									int duration_sec, int width, int height, int fps );
+
 
 	// Register PRE Callback
 	void set_pre_callback(boost::python::object python_cb_func, boost::python::object user_data );

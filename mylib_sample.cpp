@@ -70,7 +70,7 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
   uvc_frame_t *bgr;
   uvc_error_t ret;
   IplImage* cvImg;
-  const bool flag_cv = true;
+  const bool flag_cv = false;
 
 
   size_t bgr_buf_len = frame->width * frame->height * 3;
@@ -93,11 +93,14 @@ void myUvcInject::cb(uvc_frame_t *frame, void *ptr) {
   size_t N = array.shape(0);
 
   auto* p = reinterpret_cast<char *>(array.get_data());
-  for(int ii=0; ii<N; ii++) {
+#if 1
+	memcpy(p,bgr->data,N);
+#else
+for(int ii=0; ii<N; ii++) {
     *(p+ii) = *((reinterpret_cast<char *>(bgr->data)+ii));
-
   }
-	// Callback python function (Notify Callback)
+#endif
+// Callback python function (Notify Callback)
   pThis->exec_notify_callback(array);
 
   if (flag_cv) {
@@ -153,14 +156,13 @@ int myUvcInject::run(void )
     } else {
       puts("Device opened");
 	  printf("%d x %d x %d\n", _width, _height, _fps );
-
       uvc_print_diag(devh, stderr);
+
       res = uvc_get_stream_ctrl_format_size(
           devh, &ctrl, UVC_FRAME_FORMAT_YUYV, _width, _height, _fps
       );
 
       uvc_print_stream_ctrl(&ctrl, stderr);
-
       if (res < 0) {
         uvc_perror(res, "get_mode");
       } else {
@@ -168,15 +170,11 @@ int myUvcInject::run(void )
         if (res < 0) {
           uvc_perror(res, "start_streaming");
         } else {
-
-
-
-
           printf("Streaming for %d seconds...\n", _keeptime );
           uvc_error_t resAEMODE = uvc_set_ae_mode(devh, 1);
           uvc_perror(resAEMODE, "set_ae_mode");
           int i;
-          for (i = 1; i <= 5; i++) {
+          for (i = 1; i <= 10; i++) {
             /* uvc_error_t resPT = uvc_set_pantilt_abs(devh, i * 20 * 3600, 0); */
             /* uvc_perror(resPT, "set_pt_abs"); */
             uvc_error_t resEXP = uvc_set_exposure_abs(devh, 20 + i * 5);
@@ -218,7 +216,7 @@ np::ndarray myUvcInject::zero_init(uint32_t array_size) {
 *
 *********************************************************************/
 
-void myUvcInject::execute( p::object python_notify_cb, boost::python::numpy::ndarray rgb, 
+void myUvcInject::execute( p::object python_notify_cb, 
 							int duration_sec, int width, int height, int fps ) 
 {
 	exec_pre_callback();
